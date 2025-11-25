@@ -45,9 +45,19 @@ class Ubuntu_vm(vrnetlab.VM):
         nics,
         conn_mode,
     ):
-        for e in os.listdir("/"):
-            if re.search(".qcow2$", e):
-                disk_image = "/" + e
+        # Check if we should use an empty disk
+        if os.getenv("QEMU_DISK_IMAGE") == "":
+            # Create an empty disk
+            disk_image = "/empty-disk.qcow2"
+            if not os.path.exists(disk_image):
+                vrnetlab.run_command(
+                    ["qemu-img", "create", "-f", "qcow2", disk_image, "10G"]
+                )
+        else:
+            # Use the default Ubuntu disk image
+            for e in os.listdir("/"):
+                if re.search(".qcow2$", e):
+                    disk_image = "/" + e
 
         super(Ubuntu_vm, self).__init__(
             username, password, disk_image=disk_image, ram=512
@@ -61,7 +71,7 @@ class Ubuntu_vm(vrnetlab.VM):
         self.image_name = "cloud_init.iso"
         self.create_boot_image()
 
-        self.qemu_args.extend(["-cdrom", "/" + self.image_name])
+        # self.qemu_args.extend(["-cdrom", "/" + self.image_name])
 
         if "ADD_DISK" in os.environ:
             disk_size = os.getenv("ADD_DISK")

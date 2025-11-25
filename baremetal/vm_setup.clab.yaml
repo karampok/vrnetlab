@@ -1,0 +1,63 @@
+name: vm-baremetal
+
+topology:
+  nodes:
+    vm1:
+      kind: generic_vm
+      image: vrnetlab/baremetal:latest
+      binds:
+        - alpine.iso:/cdrom/alpine.iso:ro
+      ports:
+        - "5900:5900"  # remote-viewer vnc://localhost:5900
+      env:
+        QEMU_DISK_SIZE: "12G"
+        QEMU_ARGS: |
+          -cdrom /cdrom/alpine.iso
+          -boot d
+          -vnc :0
+          -device virtio-net-pci,netdev=p01
+          -netdev tap,id=p01,ifname=tap1,script=/etc/tc-tap-ifup,downscript=no
+
+    gw:
+      kind: linux
+      image: quay.io/karampok/snife:latest
+      network-mode: none
+      stages:
+        create-links:
+          exec:
+            - command: ip addr add 10.0.99.1/30 dev gw-upstream
+              target: host
+              phase: on-exit
+            - command: nft -f /home/kka/github.com/srl-labs/vrnetlab/baremetal/config/clab.nft
+              target: host
+              phase: on-exit
+      exec:
+        - ip addr add 172.20.0.1/24 dev eth1
+        - ip addr add 10.0.99.2/30 dev upstream
+        - ip route add default via 10.0.99.1
+        - nft add table inet nat
+        - nft add chain inet nat postrouting '{ type nat hook postrouting priority srcnat; }'
+        - nft add rule inet nat postrouting oifname "upstream" masquerade
+
+    dhcp:
+      kind: linux
+      image: quay.io/karampok/tools:dnsmasq
+      network-mode: container:gw
+      binds:
+        - config/dnsmasq/dnsmasq.conf:/opt/dnsmasq/dnsmasq.conf
+      entrypoint: dnsmasq -d --conf-file=/opt/dnsmasq/dnsmasq.conf
+
+    sw:
+      kind: linux
+      image: quay.io/karampok/snife:latest
+      network-mode: none
+      exec:
+        - ip link add br0 type bridge
+        - ip link set eth0 master br0
+        - ip link set eth1 master br0
+        - ip link set br0 up
+
+  links:
+    - endpoints: ["vm1:eth1", "sw:eth0"]
+    - endpoints: ["gw:eth1", "sw:eth1"]
+    - endpoints: ["gw:upstream", "host:gw-upstream"]
