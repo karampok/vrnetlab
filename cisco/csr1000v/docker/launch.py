@@ -63,7 +63,7 @@ class CSR_vm(vrnetlab.VM):
         self.num_nics = nics
         self.hostname = hostname
         self.conn_mode = conn_mode
-        self.nic_type = "virtio-net-pci"
+        self.nic_type = "vmxnet3"
         self.image_name = "config.iso"
 
         if self.install_mode:

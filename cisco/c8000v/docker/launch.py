@@ -60,15 +60,17 @@ class C8000v_vm(vrnetlab.VM):
         self.hostname = hostname
         self.conn_mode = conn_mode
         self.num_nics = 9
-        self.nic_type = "virtio-net-pci"
+        self.nic_type = "vmxnet3"
         self.image_name = "config.iso"
-        self.mode = os.environ.get('MODE', 'autonomous')
+        self.mode = os.environ.get("MODE", "autonomous")
 
         if self.install_mode:
             self.logger.debug("Install mode")
-            if self.mode == 'controller':
+            if self.mode == "controller":
                 # Controller mode uses serial-enabled images, no install needed
-                self.logger.info("Controller mode: skipping install, creating empty config ISO")
+                self.logger.info(
+                    "Controller mode: skipping install, creating empty config ISO"
+                )
                 self.create_config_image("", install=True)
             else:
                 # Autonomous mode needs install to set serial console and license level
@@ -128,12 +130,14 @@ do reload
         """
 
         v4_mgmt_address = vrnetlab.cidr_to_ddn(self.mgmt_address_ipv4)
-        is_autonomous = self.mode != 'controller'
+        is_autonomous = self.mode != "controller"
 
         # Controller mode uses VRF 513, autonomous mode uses clab-mgmt
-        if self.mode == 'controller':
+        if self.mode == "controller":
             vrf_name = "513"
-            vrf_description = "Initial containerlab management VRF (Replace with 512 on provisioning)"
+            vrf_description = (
+                "Initial containerlab management VRF (Replace with 512 on provisioning)"
+            )
         else:
             vrf_name = "clab-mgmt"
             vrf_description = "Containerlab management VRF (DO NOT DELETE)"
@@ -194,13 +198,13 @@ ip ssh maxstartups 128
         # Determine config filename based on install mode and MODE
         if install:
             config_filename = "/iosxe_config.txt"
-        elif self.mode == 'controller':
+        elif self.mode == "controller":
             config_filename = "/ciscosdwan_cloud_init.cfg"
         else:
             config_filename = "/iosxe_config.txt"
 
         # For controller mode bootstrap, wrap config in MIME structure if not already present
-        if self.mode == 'controller' and not install and "MIME-Version:" not in config:
+        if self.mode == "controller" and not install and "MIME-Version:" not in config:
             # Indent the config (add 2 spaces to each line)
             indented_config = "\n".join("  " + line for line in config.split("\n"))
 
@@ -237,9 +241,11 @@ vinitparam:
         """This function should be called periodically to do work."""
 
         # Controller mode install is a no-op (serial-enabled images)
-        if self.install_mode and self.mode == 'controller':
+        if self.install_mode and self.mode == "controller":
             if not self.running:
-                self.logger.info("Controller mode install: marking as complete immediately")
+                self.logger.info(
+                    "Controller mode install: marking as complete immediately"
+                )
                 self.running = True
             return
 
@@ -250,13 +256,15 @@ vinitparam:
             return
 
         # Different expectations for autonomous vs controller mode
-        if self.mode == 'controller':
+        if self.mode == "controller":
             (ridx, match, res) = self.con_expect(
-                [b"CVAC-4-CONFIG_DONE",
-                 b"IOSXEBOOT-4-FACTORY_RESET",
-                 b"All daemons up",
-                 b"vip-bootstrap: All daemons up",
-                 b"Error extracting config"]
+                [
+                    b"CVAC-4-CONFIG_DONE",
+                    b"IOSXEBOOT-4-FACTORY_RESET",
+                    b"All daemons up",
+                    b"vip-bootstrap: All daemons up",
+                    b"Error extracting config",
+                ]
             )
         else:
             (ridx, match, res) = self.con_expect(
@@ -282,19 +290,31 @@ vinitparam:
                     return
                 else:
                     self.logger.warning("Unexpected reload while running")
-            elif self.mode == 'controller' and (ridx == 2 or ridx == 3):  # Controller mode daemons up
-                self.logger.info("Controller mode configuration complete - all daemons up.")
+            elif self.mode == "controller" and (
+                ridx == 2 or ridx == 3
+            ):  # Controller mode daemons up
+                self.logger.info(
+                    "Controller mode configuration complete - all daemons up."
+                )
                 # close telnet connection
                 self.scrapli_tn.close()
                 # startup time?
                 startup_time = datetime.datetime.now() - self.start_time
-                self.logger.info("Controller mode startup complete in: %s", startup_time)
+                self.logger.info(
+                    "Controller mode startup complete in: %s", startup_time
+                )
                 # mark as running
                 self.running = True
                 return
-            elif self.mode == 'controller' and ridx == 4:  # Controller mode config error
-                self.logger.error("Controller mode configuration failed - error extracting config")
-                self.logger.error("Router may need manual intervention or config correction")
+            elif (
+                self.mode == "controller" and ridx == 4
+            ):  # Controller mode config error
+                self.logger.error(
+                    "Controller mode configuration failed - error extracting config"
+                )
+                self.logger.error(
+                    "Router may need manual intervention or config correction"
+                )
                 # Don't mark as running, let it continue trying or timeout
 
         # no match, if we saw some output from the router it's probably
