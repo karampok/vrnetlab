@@ -6,18 +6,18 @@ topology:
       kind: generic_vm
       image: vrnetlab/baremetal:latest
       binds:
-        - alpine.iso:/cdrom/alpine.iso:ro
+        - /home/kka/github.com/karampok/telco-ocp-lab/share/hub/agent.x86_64.iso:/cdrom/x.iso:ro
       ports:
         - "5900:5900"  # remote-viewer vnc://localhost:5900
       env:
-        QEMU_DISK_SIZE: "12G"
+        QEMU_DISK_SIZE: "50G"
+        QEMU_MEMORY: "8192"
         QEMU_ARGS: |
-          -cdrom /cdrom/alpine.iso
+          -cdrom /cdrom/x.iso
           -boot d
           -vnc :0
           -device virtio-net-pci,netdev=p01
           -netdev tap,id=p01,ifname=tap1,script=/etc/tc-tap-ifup,downscript=no
-
     gw:
       kind: linux
       image: quay.io/karampok/snife:latest
@@ -31,6 +31,9 @@ topology:
             - command: nft -f /home/kka/github.com/srl-labs/vrnetlab/baremetal/config/clab.nft
               target: host
               phase: on-exit
+            - command: ip route add 172.20.0.0/24 via 10.0.99.2
+              target: host
+              phase: on-exit
       exec:
         - ip addr add 172.20.0.1/24 dev eth1
         - ip addr add 10.0.99.2/30 dev upstream
@@ -38,7 +41,6 @@ topology:
         - nft add table inet nat
         - nft add chain inet nat postrouting '{ type nat hook postrouting priority srcnat; }'
         - nft add rule inet nat postrouting oifname "upstream" masquerade
-
     dhcp:
       kind: linux
       image: quay.io/karampok/tools:dnsmasq
