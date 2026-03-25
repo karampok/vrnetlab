@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import subprocess
+import time
+import logging
+import signal
+
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger(__name__)
+
+
+def main():
+    logger = setup_logging()
+
+    # Start libvirt daemons
+    subprocess.Popen(['virtlogd', '--daemon'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(['libvirtd', '--daemon'], check=True)
+    time.sleep(3)
+    subprocess.run(['virsh', 'list', '--all'], check=True)
+
+    # Create disk
+    disk_path = '/var/lib/libvirt/images/vm1.qcow2'
+    disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
+    subprocess.run(['qemu-img', 'create', '-f', 'qcow2', disk_path, disk_size], check=True)
+
+    # Create and start VM
+    memory = os.environ.get('QEMU_MEMORY', '8192')
+    vcpus = os.environ.get('VCPU', '4')
+    os_variant = os.environ.get('QEMU_OS_VARIANT', 'detect=on,require=off')
+
+    cmd = [
+        'virt-install',
+        '--connect', 'qemu:///system',
+        '--name', 'vm1',
+        '--memory', memory,
+        '--vcpus', vcpus,
+        '--disk', f'path={disk_path},format=qcow2',
+        '--os-variant', os_variant,
+        '--network', 'none',
+        '--graphics', 'vnc,port=5900,listen=0.0.0.0',
+        '--noautoconsole',
+        '--wait', '0',
+        '--import',
+    ]
+
+    if os.path.isdir('/cdrom'):
+        isos = [f for f in os.listdir('/cdrom') if f.endswith('.iso')]
+        if isos:
+            cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
+            cmd.remove('--import')
+
+    subprocess.run(cmd, check=True)
+
+    # Start sushy-emulator
+    log_file = open('/var/log/sushy.log', 'w')
+    sushy_proc = subprocess.Popen(
+        ['sushy-emulator', '--config', '/etc/sushy/sushy-emulator.conf', '--debug'],
+        stdout=log_file, stderr=subprocess.STDOUT
+    )
+    time.sleep(2)
+    if sushy_proc.poll() is not None:
+        with open('/var/log/sushy.log') as f:
+            logger.error(f"sushy-emulator failed:\n{f.read()}")
+        sys.exit(1)
+
+    logger.info("Redfish API: http://localhost:8000/redfish/v1/")
+
+    def signal_handler(signum, frame):
+        sushy_proc.terminate()
+        result = subprocess.run(['virsh', 'list', '--name'], capture_output=True, text=True)
+        for vm_name in result.stdout.strip().split('\n'):
+            if vm_name:
+                subprocess.run(['virsh', 'destroy', vm_name], check=False)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    while True:
+        if sushy_proc.poll() is not None:
+            with open('/var/log/sushy.log') as f:
+                logger.error(f"sushy-emulator exited:\n{f.read()}")
+            sys.exit(1)
+        time.sleep(5)
+
+
+if __name__ == '__main__':
+    main()
