@@ -6,6 +6,7 @@ topology:
       kind: linux
       image: vrnetlab/baremetal-sushy:latest
       runtime: docker
+      network-mode: none
       labels:
         containerlab: baremetal-sushy
       binds:
@@ -18,7 +19,10 @@ topology:
         QEMU_DISK_SIZE: "50G"
         QEMU_MEMORY: "8192"
         VCPU: "4"
-        CONTAINER_IP: "172.20.0.2"
+      exec:
+        - ip addr add 172.20.0.2/24 dev bmc
+        - ip link set bmc up
+        - ip route add default via 172.20.0.1
       cap-add:
         - NET_ADMIN
         - SYS_ADMIN
@@ -64,6 +68,6 @@ topology:
         - ip link set br0 up
 
   links:
-    - endpoints: ["vm1:eth1", "sw:eth0"]
+    - endpoints: ["vm1:bmc", "sw:eth0"]
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]

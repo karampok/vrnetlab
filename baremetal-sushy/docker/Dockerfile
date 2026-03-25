@@ -19,6 +19,9 @@ RUN apt-get update -qy && \
     bridge-utils \
     socat \
     telnet \
+    iputils-ping \
+    curl \
+    tini \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
@@ -39,7 +42,9 @@ COPY sushy-emulator.conf /etc/sushy/sushy-emulator.conf
 COPY libvirtd.conf /etc/libvirt/libvirtd.conf
 COPY qemu.conf /etc/libvirt/qemu.conf
 
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8000 5900
 HEALTHCHECK CMD ["/healthcheck.py"]
 
-ENTRYPOINT ["/launch.py"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/launch.py"]

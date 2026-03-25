@@ -20,14 +20,32 @@ def main():
     logger = setup_logging()
 
     # Start libvirt daemons
+    logger.info("Starting virtlogd...")
     subprocess.Popen(['virtlogd', '--daemon'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    logger.info("Starting libvirtd...")
     subprocess.run(['libvirtd', '--daemon'], check=True)
     time.sleep(3)
-    subprocess.run(['virsh', 'list', '--all'], check=True)
+    subprocess.run(['virsh', 'list', '--all'], check=True, capture_output=True)
+    logger.info("libvirtd ready")
+
+    # Start sushy-emulator
+    logger.info("Starting sushy-emulator...")
+    log_file = open('/var/log/sushy.log', 'w')
+    sushy_proc = subprocess.Popen(
+        ['sushy-emulator', '--config', '/etc/sushy/sushy-emulator.conf', '--debug'],
+        stdout=log_file, stderr=subprocess.STDOUT
+    )
+    time.sleep(2)
+    if sushy_proc.poll() is not None:
+        with open('/var/log/sushy.log') as f:
+            logger.error(f"sushy-emulator failed:\n{f.read()}")
+        sys.exit(1)
+    logger.info("sushy-emulator ready")
 
     # Create disk
     disk_path = '/var/lib/libvirt/images/vm1.qcow2'
     disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
+    logger.info(f"Creating disk {disk_path} size={disk_size}")
     subprocess.run(['qemu-img', 'create', '-f', 'qcow2', disk_path, disk_size], check=True)
 
     # Create and start VM
@@ -46,7 +64,6 @@ def main():
         '--network', 'none',
         '--graphics', 'vnc,port=5900,listen=0.0.0.0',
         '--noautoconsole',
-        '--wait', '0',
         '--import',
     ]
 
@@ -56,21 +73,12 @@ def main():
             cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
             cmd.remove('--import')
 
+    logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)
+    logger.info("VM created")
 
-    # Start sushy-emulator
-    log_file = open('/var/log/sushy.log', 'w')
-    sushy_proc = subprocess.Popen(
-        ['sushy-emulator', '--config', '/etc/sushy/sushy-emulator.conf', '--debug'],
-        stdout=log_file, stderr=subprocess.STDOUT
-    )
-    time.sleep(2)
-    if sushy_proc.poll() is not None:
-        with open('/var/log/sushy.log') as f:
-            logger.error(f"sushy-emulator failed:\n{f.read()}")
-        sys.exit(1)
-
-    logger.info("Redfish API: http://localhost:8000/redfish/v1/")
+    logger.info("curl http://172.20.0.2:8000/redfish/v1/")
+    logger.info("remote-viewer vnc://172.20.0.2:5900")
 
     def signal_handler(signum, frame):
         sushy_proc.terminate()
