@@ -2,7 +2,7 @@ name: vm-baremetal-sushy
 
 topology:
   nodes:
-    vm1:
+    bmh1:
       kind: linux
       image: vrnetlab/baremetal-sushy:latest
       runtime: docker
@@ -36,10 +36,24 @@ topology:
             - command: ip addr add 10.0.99.1/30 dev gw-upstream
               target: host
               phase: on-exit
-            - command: nft -f /home/kka/github.com/srl-labs/vrnetlab/baremetal/config/clab.nft
+            - command: ip route add 172.20.0.0/24 via 10.0.99.2
               target: host
               phase: on-exit
-            - command: ip route add 172.20.0.0/24 via 10.0.99.2
+            # nft rules applied from clab.nft:
+            # table inet clab
+            # delete table inet clab
+            # table inet clab {
+            #   chain forward { type filter hook forward priority -1; policy accept;
+            #     iifname "gw-upstream" accept;
+            #     oifname "gw-upstream" ct state related,established accept; }
+            #   chain postrouting { type nat hook postrouting priority 99;
+            #     ip saddr 10.0.99.0/30 oifname != "gw-upstream" masquerade; }
+            # }
+            # table ip filter {
+            #   chain FORWARD {
+            #     iifname "gw-upstream" accept comment "containerlab-custom";
+            #     oifname "gw-upstream" ct state related,established accept comment "containerlab-custom"; } }
+            - command: nft -f /home/kka/github.com/srl-labs/vrnetlab/baremetal/config/clab.nft
               target: host
               phase: on-exit
       exec:
@@ -56,7 +70,6 @@ topology:
       binds:
         - ../baremetal/config/dnsmasq/dnsmasq.conf:/opt/dnsmasq/dnsmasq.conf
       entrypoint: dnsmasq -d --conf-file=/opt/dnsmasq/dnsmasq.conf
-
     sw:
       kind: linux
       image: quay.io/karampok/snife:latest
@@ -70,8 +83,8 @@ topology:
         - ip link set br0 up
 
   links:
-    - endpoints: ["vm1:bmc", "sw:eth0"]
-    - endpoints: ["vm1:net", "sw:eth2"]
-    - endpoints: ["vm1:eth10", "sw:eth3"]
+    - endpoints: ["bmh1:bmc", "sw:eth0"]
+    - endpoints: ["bmh1:net", "sw:eth2"]
+    - endpoints: ["bmh1:eth10", "sw:eth3"]
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]
