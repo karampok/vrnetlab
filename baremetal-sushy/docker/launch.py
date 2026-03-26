@@ -61,7 +61,7 @@ def main():
         '--vcpus', vcpus,
         '--disk', f'path={disk_path},format=qcow2',
         '--os-variant', os_variant,
-        '--network', 'none',
+        '--network', 'model=virtio,type=ethernet,xpath0.create=./script,xpath1.set=./script/@path,xpath1.value=/etc/tc-tap-eth10-ifup',
         '--graphics', 'vnc,port=5900,listen=0.0.0.0',
         '--noautoconsole',
         '--import',
@@ -72,6 +72,29 @@ def main():
         if isos:
             cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
             cmd.remove('--import')
+
+    logger.info("Waiting for eth10 interface...")
+    for _ in range(30):
+        if os.path.exists('/sys/class/net/eth10'):
+            break
+        time.sleep(1)
+    else:
+        logger.error("eth10 did not appear, aborting")
+        sys.exit(1)
+    logger.info("eth10 is ready")
+
+    # Write tc-mirred ifup script for eth10 <-> tap
+    with open('/etc/tc-tap-eth10-ifup', 'w') as f:
+        f.write("""#!/bin/bash
+TAP=$1
+ip link set eth10 up
+ip link set $TAP up
+tc qdisc add dev eth10 clsact
+tc filter add dev eth10 ingress flower action mirred egress redirect dev $TAP
+tc qdisc add dev $TAP clsact
+tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
+""")
+    os.chmod('/etc/tc-tap-eth10-ifup', 0o755)
 
     logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)

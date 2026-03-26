@@ -65,9 +65,13 @@ topology:
         - ip link add br0 type bridge
         - ip link set eth0 master br0
         - ip link set eth1 master br0
+        - ip link set eth2 master br0
+        - ip link set eth3 master br0
         - ip link set br0 up
 
   links:
     - endpoints: ["vm1:bmc", "sw:eth0"]
+    - endpoints: ["vm1:net", "sw:eth2"]
+    - endpoints: ["vm1:eth10", "sw:eth3"]
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]
