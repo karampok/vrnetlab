@@ -12,9 +12,9 @@ topology:
       binds:
         - /home/kka/github.com/karampok/telco-ocp-lab/share/hub/agent.x86_64.iso:/cdrom/x.iso:ro
         - /dev/kvm:/dev/kvm
+        - /tmp/bmh1-libvirt:/var/run/libvirt
       ports:
         - "5900:5900"  # VNC: remote-viewer vnc://localhost:5900
-        - "8000:8000"  # Redfish API: http://localhost:8000/redfish/v1/
       env:
         QEMU_DISK_SIZE: "50G"
         QEMU_MEMORY: "8192"
@@ -26,6 +26,16 @@ topology:
       cap-add:
         - NET_ADMIN
         - SYS_ADMIN
+    sushy1:
+      kind: linux
+      image: quay.io/karampok/sushy-emulator:latest
+      network-mode: none
+      binds:
+        - /tmp/bmh1-libvirt:/var/run/libvirt
+      exec:
+        - ip addr add 172.20.0.3/24 dev bmc
+        - ip link set bmc up
+        - ip route add default via 172.20.0.1
     gw:
       kind: linux
       image: quay.io/karampok/snife:latest
@@ -80,11 +90,13 @@ topology:
         - ip link set eth1 master br0
         - ip link set eth2 master br0
         - ip link set eth3 master br0
+        - ip link set eth4 master br0
         - ip link set br0 up
 
   links:
     - endpoints: ["bmh1:bmc", "sw:eth0"]
     - endpoints: ["bmh1:net", "sw:eth2"]
     - endpoints: ["bmh1:eth10", "sw:eth3"]
+    - endpoints: ["sushy1:bmc", "sw:eth4"]
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]

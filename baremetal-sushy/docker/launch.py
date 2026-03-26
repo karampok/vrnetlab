@@ -28,20 +28,6 @@ def main():
     subprocess.run(['virsh', 'list', '--all'], check=True, capture_output=True)
     logger.info("libvirtd ready")
 
-    # Start sushy-emulator
-    logger.info("Starting sushy-emulator...")
-    log_file = open('/var/log/sushy.log', 'w')
-    sushy_proc = subprocess.Popen(
-        ['sushy-emulator', '--config', '/etc/sushy/sushy-emulator.conf', '--debug'],
-        stdout=log_file, stderr=subprocess.STDOUT
-    )
-    time.sleep(2)
-    if sushy_proc.poll() is not None:
-        with open('/var/log/sushy.log') as f:
-            logger.error(f"sushy-emulator failed:\n{f.read()}")
-        sys.exit(1)
-    logger.info("sushy-emulator ready")
-
     # Create disk
     disk_path = '/var/lib/libvirt/images/vm1.qcow2'
     disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
@@ -73,16 +59,6 @@ def main():
             cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
             cmd.remove('--import')
 
-    logger.info("Waiting for eth10 interface...")
-    for _ in range(30):
-        if os.path.exists('/sys/class/net/eth10'):
-            break
-        time.sleep(1)
-    else:
-        logger.error("eth10 did not appear, aborting")
-        sys.exit(1)
-    logger.info("eth10 is ready")
-
     # Write tc-mirred ifup script for eth10 <-> tap
     with open('/etc/tc-tap-eth10-ifup', 'w') as f:
         f.write("""#!/bin/bash
@@ -104,7 +80,6 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
     logger.info("remote-viewer vnc://172.20.0.2:5900")
 
     def signal_handler(signum, frame):
-        sushy_proc.terminate()
         result = subprocess.run(['virsh', 'list', '--name'], capture_output=True, text=True)
         for vm_name in result.stdout.strip().split('\n'):
             if vm_name:
@@ -115,10 +90,6 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
     signal.signal(signal.SIGINT, signal_handler)
 
     while True:
-        if sushy_proc.poll() is not None:
-            with open('/var/log/sushy.log') as f:
-                logger.error(f"sushy-emulator exited:\n{f.read()}")
-            sys.exit(1)
         time.sleep(5)
 
 
