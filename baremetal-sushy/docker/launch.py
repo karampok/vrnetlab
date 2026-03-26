@@ -75,8 +75,6 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
     logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)
     logger.info("VM created")
-
-    logger.info("curl http://172.20.0.2:8000/redfish/v1/")
     logger.info("remote-viewer vnc://172.20.0.2:5900")
 
     def signal_handler(signum, frame):

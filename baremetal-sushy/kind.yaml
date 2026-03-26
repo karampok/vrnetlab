@@ -5,6 +5,7 @@ nodes:
   kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
+    controlPlaneEndpoint: "172.20.0.10:6443"
     apiServer:
       extraArgs:
         bind-address: "0.0.0.0"
@@ -12,15 +13,9 @@ nodes:
       - "172.20.0.10"
   - |
     kind: InitConfiguration
+    localAPIEndpoint:
+      advertiseAddress: "172.20.0.10"
+      bindPort: 6443
     nodeRegistration:
       kubeletExtraArgs:
         node-ip: "172.20.0.10"
-      taints: []
-- role: worker
-  kubeadmConfigPatches:
-  - |
-    kind: JoinConfiguration
-    nodeRegistration:
-      kubeletExtraArgs:
-        node-ip: "172.20.0.11"
-      taints: []
