@@ -38,11 +38,15 @@ def main():
     memory = os.environ.get('QEMU_MEMORY', '8192')
     vcpus = os.environ.get('VCPU', '4')
     os_variant = os.environ.get('QEMU_OS_VARIANT', 'detect=on,require=off')
+    machine = os.environ.get('QEMU_MACHINE', 'q35')
+
+    uuid = os.environ.get('VM_UUID')
 
     cmd = [
         'virt-install',
         '--connect', 'qemu:///system',
         '--name', 'vm1',
+        '--machine', machine,
         '--memory', memory,
         '--vcpus', vcpus,
         '--disk', f'path={disk_path},format=qcow2',
@@ -52,6 +56,10 @@ def main():
         '--noautoconsole',
         '--import',
     ]
+
+    if uuid:
+        cmd += ['--uuid', uuid]
+        logger.info(f"Using VM UUID: {uuid}")
 
     if os.path.isdir('/cdrom'):
         isos = [f for f in os.listdir('/cdrom') if f.endswith('.iso')]
@@ -76,6 +84,10 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
     subprocess.run(cmd, check=True)
     logger.info("VM created")
     logger.info("remote-viewer vnc://172.20.0.2:5900")
+    domain_uuid = uuid or subprocess.run(
+        ['virsh', 'domuuid', 'vm1'], capture_output=True, text=True
+    ).stdout.strip()
+    logger.info(f"curl http://172.20.0.2:8000/redfish/v1/Systems/{domain_uuid}")
 
     def signal_handler(signum, frame):
         result = subprocess.run(['virsh', 'list', '--name'], capture_output=True, text=True)

@@ -7,17 +7,14 @@ topology:
       image: vrnetlab/baremetal-sushy:latest
       runtime: docker
       network-mode: none
-      labels:
-        containerlab: baremetal-sushy
       binds:
         - /dev/kvm:/dev/kvm
         - /tmp/bmh1-libvirt:/var/run/libvirt
-      ports:
-        - "5900:5900"  # VNC: remote-viewer vnc://localhost:5900
       env:
         QEMU_DISK_SIZE: "50G"
         QEMU_MEMORY: "8192"
         VCPU: "4"
+        VM_UUID: 11111111-1111-1111-1111-111111111111
       exec:
         - ip addr add 172.20.0.2/24 dev bmc
         - ip link set bmc up
@@ -25,16 +22,12 @@ topology:
       cap-add:
         - NET_ADMIN
         - SYS_ADMIN
-    sushy1:
+    bmc1:
       kind: linux
       image: quay.io/karampok/sushy-emulator:latest
-      network-mode: none
+      network-mode: container:bmh1
       binds:
         - /tmp/bmh1-libvirt:/var/run/libvirt
-      exec:
-        - ip addr add 172.20.0.3/24 dev bmc
-        - ip link set bmc up
-        - ip route add default via 172.20.0.1
     gw:
       kind: linux
       image: quay.io/karampok/snife:latest
@@ -81,7 +74,7 @@ topology:
       entrypoint: dnsmasq -d --conf-file=/opt/dnsmasq/dnsmasq.conf
     nginx:
       kind: linux
-      image: nginx:latest
+      image: nginx:alpine
       network-mode: none
       exec:
         - ip addr add 172.20.0.50/24 dev eth1
@@ -116,7 +109,6 @@ topology:
         - ip link set eth1 master br0
         - ip link set eth2 master br0
         - ip link set eth3 master br0
-        - ip link set eth4 master br0
         - ip link set eth5 master br0
         - ip link set eth6 master br0
         - ip link set br0 up
@@ -125,7 +117,6 @@ topology:
     - endpoints: ["bmh1:bmc", "sw:eth0"]
     - endpoints: ["bmh1:net", "sw:eth2"]
     - endpoints: ["bmh1:eth10", "sw:eth3"]
-    - endpoints: ["sushy1:bmc", "sw:eth4"]
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]
     - endpoints: ["nginx:eth1", "sw:eth5"]

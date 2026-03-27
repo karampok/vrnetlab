@@ -33,6 +33,4 @@ COPY qemu.conf /etc/libvirt/qemu.conf
 
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 5900
-
 ENTRYPOINT ["/usr/bin/tini", "--", "/launch.py"]
