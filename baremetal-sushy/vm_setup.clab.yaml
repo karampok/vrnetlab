@@ -117,6 +117,7 @@ topology:
     - endpoints: ["bmh1:bmc", "sw:eth0"]
     - endpoints: ["bmh1:net", "sw:eth2"]
     - endpoints: ["bmh1:eth10", "sw:eth3"]
+      mtu: 1500
     - endpoints: ["gw:eth1", "sw:eth1"]
     - endpoints: ["gw:upstream", "host:gw-upstream"]
     - endpoints: ["nginx:eth1", "sw:eth5"]

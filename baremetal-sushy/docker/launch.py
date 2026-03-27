@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import glob
+import json
 import os
 import sys
 import subprocess
@@ -19,7 +21,6 @@ def setup_logging():
 def main():
     logger = setup_logging()
 
-    # Start libvirt daemons
     logger.info("Starting virtlogd...")
     subprocess.Popen(['virtlogd', '--daemon'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     logger.info("Starting libvirtd...")
@@ -28,19 +29,21 @@ def main():
     subprocess.run(['virsh', 'list', '--all'], check=True, capture_output=True)
     logger.info("libvirtd ready")
 
-    # Create disk
+    subprocess.run(['virsh', 'pool-define-as', 'default', 'dir', '--target', '/var/lib/libvirt/images'], check=False, capture_output=True)
+    subprocess.run(['virsh', 'pool-start', 'default'], check=False, capture_output=True)
+    subprocess.run(['virsh', 'pool-autostart', 'default'], check=False, capture_output=True)
+    logger.info("storage pool 'default' ready")
+
     disk_path = '/var/lib/libvirt/images/vm1.qcow2'
     disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
     logger.info(f"Creating disk {disk_path} size={disk_size}")
     subprocess.run(['qemu-img', 'create', '-f', 'qcow2', disk_path, disk_size], check=True)
 
-    # Create and start VM
-    memory = os.environ.get('QEMU_MEMORY', '8192')
-    vcpus = os.environ.get('VCPU', '4')
-    os_variant = os.environ.get('QEMU_OS_VARIANT', 'detect=on,require=off')
     machine = os.environ.get('QEMU_MACHINE', 'q35')
-
+    memory = os.environ.get('QEMU_MEMORY', '8192')
+    os_variant = os.environ.get('QEMU_OS_VARIANT', 'detect=on,require=off')
     uuid = os.environ.get('VM_UUID')
+    vcpus = os.environ.get('VCPU', '4')
 
     cmd = [
         'virt-install',
@@ -51,7 +54,6 @@ def main():
         '--vcpus', vcpus,
         '--disk', f'path={disk_path},format=qcow2',
         '--os-variant', os_variant,
-        '--network', 'model=virtio,type=ethernet,xpath0.create=./script,xpath1.set=./script/@path,xpath1.value=/etc/tc-tap-eth10-ifup',
         '--graphics', 'vnc,port=5900,listen=0.0.0.0',
         '--noautoconsole',
         '--import',
@@ -67,27 +69,54 @@ def main():
             cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
             cmd.remove('--import')
 
-    # Write tc-mirred ifup script for eth10 <-> tap
-    with open('/etc/tc-tap-eth10-ifup', 'w') as f:
-        f.write("""#!/bin/bash
+    eth_ifaces = sorted(
+        (os.path.basename(p) for p in glob.glob('/sys/class/net/eth*')),
+        key=lambda x: int(x[3:])
+    )
+    logger.info(f"Detected eth interfaces: {eth_ifaces}")
+    for iface in eth_ifaces:
+        script_path = f'/etc/tc-tap-{iface}-ifup'
+        with open(script_path, 'w') as f:
+            f.write(f"""#!/bin/bash
 TAP=$1
-ip link set eth10 up
+ip link set {iface} up
 ip link set $TAP up
-tc qdisc add dev eth10 clsact
-tc filter add dev eth10 ingress flower action mirred egress redirect dev $TAP
+tc qdisc del dev {iface} clsact 2>/dev/null || true
+tc qdisc del dev $TAP clsact 2>/dev/null || true
+tc qdisc add dev {iface} clsact
+tc filter add dev {iface} ingress flower action mirred egress redirect dev $TAP
 tc qdisc add dev $TAP clsact
-tc filter add dev $TAP ingress flower action mirred egress redirect dev eth10
+tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
 """)
-    os.chmod('/etc/tc-tap-eth10-ifup', 0o755)
+        os.chmod(script_path, 0o755)
+        cmd += ['--network', f'model=virtio,type=ethernet,xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
+        logger.info(f"Added network for {iface} via {script_path}")
 
     logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)
     logger.info("VM created")
-    logger.info("remote-viewer vnc://172.20.0.2:5900")
+    bmc_ip = '<bmc>'
+    try:
+        data = json.loads(subprocess.run(
+            ['ip', '--json', 'a', 's', 'dev', 'bmc'], capture_output=True, text=True
+        ).stdout)
+        for addr in data[0].get('addr_info', []):
+            if addr['family'] == 'inet':
+                bmc_ip = addr['local']
+                break
+    except Exception:
+        pass
     domain_uuid = uuid or subprocess.run(
         ['virsh', 'domuuid', 'vm1'], capture_output=True, text=True
     ).stdout.strip()
-    logger.info(f"curl http://172.20.0.2:8000/redfish/v1/Systems/{domain_uuid}")
+    logger.info(f"remote-viewer vnc://{bmc_ip}:5900")
+    logger.info(f"curl http://{bmc_ip}:8000/redfish/v1/Systems/{domain_uuid}")
+    logger.info(
+        f"bmcs-clab.yaml:\n"
+        f"- user: \"admin\"\n"
+        f"  password: \"dummy\"\n"
+        f"  address: \"redfish-virtualmedia+http://{bmc_ip}:8000/redfish/v1/Systems/{domain_uuid}\""
+    )
 
     def signal_handler(signum, frame):
         result = subprocess.run(['virsh', 'list', '--name'], capture_output=True, text=True)

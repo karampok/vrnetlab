@@ -12,6 +12,7 @@ RUN apt-get update -qy && \
     virtinst \
     qemu-kvm \
     qemu-utils \
+    ovmf \
     iproute2 \
     bridge-utils \
     socat \
