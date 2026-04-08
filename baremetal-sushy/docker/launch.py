@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import glob
+import hashlib
 import json
 import os
 import sys
@@ -8,6 +9,13 @@ import subprocess
 import time
 import logging
 import signal
+
+
+def mac_from_uuid(uuid_str, index):
+    h = hashlib.md5(f"{uuid_str}-{index}".encode()).digest()
+    mac = bytearray(h[:6])
+    mac[0] = (mac[0] | 0x02) & 0xfe  # locally administered, unicast
+    return ':'.join(f'{b:02x}' for b in mac)
 
 
 def setup_logging():
@@ -29,11 +37,6 @@ def main():
     subprocess.run(['virsh', 'list', '--all'], check=True, capture_output=True)
     logger.info("libvirtd ready")
 
-    subprocess.run(['virsh', 'pool-define-as', 'default', 'dir', '--target', '/var/lib/libvirt/images'], check=False, capture_output=True)
-    subprocess.run(['virsh', 'pool-start', 'default'], check=False, capture_output=True)
-    subprocess.run(['virsh', 'pool-autostart', 'default'], check=False, capture_output=True)
-    logger.info("storage pool 'default' ready")
-
     disk_path = '/var/lib/libvirt/images/vm1.qcow2'
     disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
     logger.info(f"Creating disk {disk_path} size={disk_size}")
@@ -41,7 +44,7 @@ def main():
 
     machine = os.environ.get('QEMU_MACHINE', 'q35')
     memory = os.environ.get('QEMU_MEMORY', '8192')
-    os_variant = os.environ.get('QEMU_OS_VARIANT', 'detect=on,require=off')
+    os_variant = os.environ.get('QEMU_OS_VARIANT', 'rhel9.1')
     uuid = os.environ.get('VM_UUID')
     vcpus = os.environ.get('VCPU', '4')
 
@@ -54,6 +57,7 @@ def main():
         '--vcpus', vcpus,
         '--disk', f'path={disk_path},format=qcow2',
         '--os-variant', os_variant,
+        '--boot', 'firmware=efi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no',
         '--graphics', 'vnc,port=5900,listen=0.0.0.0',
         '--noautoconsole',
         '--import',
@@ -63,9 +67,11 @@ def main():
         cmd += ['--uuid', uuid]
         logger.info(f"Using VM UUID: {uuid}")
 
+    has_iso = False
     if os.path.isdir('/cdrom'):
         isos = [f for f in os.listdir('/cdrom') if f.endswith('.iso')]
         if isos:
+            has_iso = True
             cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
             cmd.remove('--import')
 
@@ -74,7 +80,7 @@ def main():
         key=lambda x: int(x[3:])
     )
     logger.info(f"Detected eth interfaces: {eth_ifaces}")
-    for iface in eth_ifaces:
+    for idx, iface in enumerate(eth_ifaces):
         script_path = f'/etc/tc-tap-{iface}-ifup'
         with open(script_path, 'w') as f:
             f.write(f"""#!/bin/bash
@@ -89,12 +95,17 @@ tc qdisc add dev $TAP clsact
 tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
 """)
         os.chmod(script_path, 0o755)
-        cmd += ['--network', f'model=virtio,type=ethernet,xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
-        logger.info(f"Added network for {iface} via {script_path}")
+        mac = mac_from_uuid(uuid, idx) if uuid else None
+        mac_arg = f',mac={mac}' if mac else ''
+        cmd += ['--network', f'model=virtio,type=ethernet{mac_arg},xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
+        logger.info(f"Added network for {iface} mac={mac} via {script_path}")
 
     logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)
     logger.info("VM created")
+    if not has_iso:
+        subprocess.run(['virsh', 'destroy', 'vm1'], check=False)
+        logger.info("No ISO mounted, VM powered off — waiting for BMC to provision")
     bmc_ip = '<bmc>'
     try:
         data = json.loads(subprocess.run(

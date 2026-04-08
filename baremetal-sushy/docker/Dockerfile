@@ -24,13 +24,15 @@ RUN apt-get update -qy && \
     && rm -rf /var/lib/apt/lists/*
 
 # Create configuration directories and runtime dirs
-RUN mkdir -p /etc/libvirt /var/run/libvirt /run/libvirt /var/lib/libvirt/images /var/log/libvirt/qemu
+RUN mkdir -p /etc/libvirt/storage/autostart /var/run/libvirt /run/libvirt /var/lib/libvirt/images /var/lib/libvirt/default /var/log/libvirt/qemu
 
-# Copy launch script and configuration
-COPY launch.py /launch.py
-RUN chmod +x /launch.py
+COPY default-pool.xml /etc/libvirt/storage/default.xml
+RUN ln -s /etc/libvirt/storage/default.xml /etc/libvirt/storage/autostart/default.xml
+
 COPY libvirtd.conf /etc/libvirt/libvirtd.conf
 COPY qemu.conf /etc/libvirt/qemu.conf
+COPY launch.py /launch.py
+RUN chmod +x /launch.py
 
 ENV PYTHONUNBUFFERED=1
 

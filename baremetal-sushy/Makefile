@@ -13,6 +13,7 @@ clean:
 	@echo "Nothing to clean (all files are in docker/ directory)"
 
 deploy:
+	mkdir -p /tmp/bmh1-libvirt
 	sudo containerlab deploy -t vm_setup.clab.yaml
 	kind export kubeconfig --name cluster
 	docker network disconnect kind cluster-control-plane

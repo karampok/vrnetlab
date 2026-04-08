@@ -16,10 +16,5 @@ table inet clab {
     }
 }
 
-# inject into iptables-nft managed table to bypass FORWARD policy DROP
-table ip filter {
-    chain FORWARD {
-        iifname "gw-upstream" accept comment "containerlab-custom"
-        oifname "gw-upstream" ct state related,established accept comment "containerlab-custom"
-    }
-}
+add rule ip filter FORWARD iifname "gw-upstream" accept comment "containerlab-custom"
+add rule ip filter FORWARD oifname "gw-upstream" ct state related,established accept comment "containerlab-custom"
