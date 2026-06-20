@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # Juniper Apstra - vrnetlab / srl-labs Dockerfile
 # ------------------------------------------------------------------------------
-FROM ghcr.io/srl-labs/vrnetlab-base:0.3.0
+FROM ghcr.io/srl-labs/vrnetlab-base:0.2.1
 
 ARG VERSION
 ARG IMAGE

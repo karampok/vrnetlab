@@ -10,7 +10,7 @@ RUN apt-get update -qy && \
 COPY $IMAGE* /
 RUN qemu-img resize /${IMAGE} ${DISK_SIZE}
 
-FROM ghcr.io/srl-labs/vrnetlab-base:0.3.0
+FROM ghcr.io/srl-labs/vrnetlab-base:0.2.1
 
 ARG IMAGE
 COPY --from=builder $IMAGE* /

@@ -1,4 +1,4 @@
-FROM ghcr.io/srl-labs/vrnetlab-base:0.3.0
+FROM ghcr.io/srl-labs/vrnetlab-base:0.2.1
 LABEL maintainer="Kristian Larsson <kristian@spritelink.net>"
 LABEL maintainer="Roman Dodin <dodin.roman@gmail.com>"
 
