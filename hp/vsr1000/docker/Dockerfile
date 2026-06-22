@@ -1,4 +1,4 @@
-FROM ghcr.io/srl-labs/vrnetlab-base:0.2.1
+FROM ghcr.io/srl-labs/vrnetlab-base:0.3.0
 LABEL maintainer="Kristian Larsson <kristian@spritelink.net>"
 
 ARG IMAGE
