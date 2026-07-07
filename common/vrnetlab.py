@@ -599,7 +599,7 @@ class VM:
         ip link set tap0 mtu 65000
 
         # disable IPv6 to avoid sending periodic traffic like router solicitations from the vrnetlab container
-        ip -6 addr flush $TAP_IF
+        ip -6 addr flush tap0
 
         # create tc eth<->tap redirect rules
 
