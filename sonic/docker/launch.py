@@ -99,6 +99,48 @@ class SONiC_vm(vrnetlab.VM):
 
         return
 
+    def inject_authorized_keys(self):
+        """Inject SSH public keys from the container's /authorized_keys file into the VM.
+
+        Containerlab writes the host's collected public keys to /authorized_keys inside
+        the container. For native container nodes this file is bind-mounted directly, but
+        for vrnetlab VMs it never reaches the QEMU guest. This method pushes each key
+        line via the already-open serial console session so that passwordless SSH works
+        out of the box — matching the behaviour users see with other containerlab kinds.
+        """
+        auth_keys_file = "/authorized_keys"
+        if not os.path.exists(auth_keys_file):
+            self.logger.info(
+                "No /authorized_keys file found, skipping SSH key injection"
+            )
+            return
+
+        keys = []
+        with open(auth_keys_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    keys.append(line)
+
+        if not keys:
+            self.logger.info("No SSH keys found in /authorized_keys")
+            return
+
+        self.logger.info(f"Injecting {len(keys)} SSH public key(s) into the VM")
+        self.wait_write("mkdir -p /home/admin/.ssh && chmod 700 /home/admin/.ssh", "#")
+        self.wait_write("truncate -s 0 /home/admin/.ssh/authorized_keys", "#")
+        for key in keys:
+            # SSH public keys are base64 + alphanumeric — single-quoting is safe
+            self.wait_write(
+                f"echo '{key}' >> /home/admin/.ssh/authorized_keys", "#"
+            )
+        self.wait_write(
+            "chmod 600 /home/admin/.ssh/authorized_keys"
+            " && chown -R admin:admin /home/admin/.ssh",
+            "#",
+        )
+        self.logger.info("SSH key injection completed")
+
     def bootstrap_config(self):
         """Do the actual bootstrap config"""
         self.logger.info("applying bootstrap configuration")
@@ -136,6 +178,7 @@ class SONiC_vm(vrnetlab.VM):
         self.wait_write("sleep 1", "#")
         self.wait_write("printf '127.0.0.1\\t%s\\n' >> /etc/hosts" % (self.hostname))
         self.wait_write("sleep 1", "#")
+        self.inject_authorized_keys()
         self.logger.info("completed bootstrap configuration")
 
     def startup_config(self):
