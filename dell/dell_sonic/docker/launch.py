@@ -109,10 +109,11 @@ class Dell_Sonic_VM(vrnetlab.VM):
             self.wait_write(
                 f"sudo /usr/sbin/ip address add {self.mgmt_address_ipv4} dev eth0", "#"
             )
-        if not self.mgmt_address_ipv4 == "dhcp":
+        if self.mgmt_address_ipv6 and self.mgmt_address_ipv6 != "dhcp":
             # note, v6 address is not being applied for whatever reason
             self.wait_write(
-                f"sudo /usr/sbin/ip -6 address add {self.mgmt_address_ipv6} dev eth0", "#"
+                f"sudo /usr/sbin/ip -6 address add {self.mgmt_address_ipv6} dev eth0",
+                "#",
             )
         self.wait_write("passwd -q %s" % (self.username))
         self.wait_write(self.password, "New password:")

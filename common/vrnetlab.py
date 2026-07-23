@@ -146,6 +146,16 @@ class VM:
     def __str__(self):
         return self.__class__.__name__
 
+    def render_optional_mgmt_config(self, template, **values):
+        """Render static management config only when all values are available."""
+        if not all(value and value != "dhcp" for value in values.values()):
+            return ""
+
+        for name, value in values.items():
+            template = template.replace(f"{{{name}}}", str(value))
+
+        return template
+
     def _overlay_disk_image_format(self) -> str:
         res = run_command(["qemu-img", "info", "--output", "json", self.image])
         if res is not None:
@@ -606,8 +616,19 @@ class VM:
         intf = f"{self.data_intf_prefix}{i}"
         macvtap = f"macvtap{i}"
         run_command(
-            ["ip", "link", "add", "link", intf, "name", macvtap,
-             "type", "macvtap", "mode", "passthru"]
+            [
+                "ip",
+                "link",
+                "add",
+                "link",
+                intf,
+                "name",
+                macvtap,
+                "type",
+                "macvtap",
+                "mode",
+                "passthru",
+            ]
         )
         with open(f"/sys/class/net/{intf}/mtu") as f:
             mtu = f.readline().strip()
@@ -1039,7 +1060,13 @@ class VM:
         self.start()
 
     def wait_write(
-        self, cmd, wait="__defaultpattern__", con=None, clean_buffer=False, hold="", timeout=None
+        self,
+        cmd,
+        wait="__defaultpattern__",
+        con=None,
+        clean_buffer=False,
+        hold="",
+        timeout=None,
     ):
         """Wait for something on the serial port and then send command
 
