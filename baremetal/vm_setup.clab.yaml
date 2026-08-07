@@ -1,4 +1,4 @@
-name: vm-baremetal-sushy
+name: vm-baremetal
 
 topology:
   nodes:
@@ -11,9 +11,6 @@ topology:
         - /dev/kvm:/dev/kvm
         - /tmp/bmh1-libvirt:/var/run/libvirt
       env:
-        QEMU_DISK_SIZE: "50G"
-        QEMU_MEMORY: "8192"
-        VCPU: "4"
         VM_UUID: 11111111-1111-1111-1111-111111111111
       exec:
         - ip addr add 172.20.0.2/24 dev bmc
@@ -107,7 +104,6 @@ topology:
         - ip link add br0 type bridge
         - ip link set eth0 master br0
         - ip link set eth1 master br0
-        - ip link set eth2 master br0
         - ip link set eth3 master br0
         - ip link set eth4 master br0
         - ip link set eth5 master br0
@@ -116,7 +112,6 @@ topology:
 
   links:
     - endpoints: ["bmh1:bmc", "sw:eth0"]
-    - endpoints: ["bmh1:net", "sw:eth2"]
     - endpoints: ["bmh1:eth10", "sw:eth3"]
       mtu: 1500
     - endpoints: ["bmh1:eth11", "sw:eth4"]

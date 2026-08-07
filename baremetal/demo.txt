@@ -1,0 +1,31 @@
+step:
+- start from docker-docker
+- start docker-vm //iso alpine // show remote-viewer
+- docker - mv //iso from assisted, iso into the clab file
+- docker - vm/sushy sidecar// do redfish calls
+- docker bond vm/sush
+
+
+git co step1 : 
+show docker-docker file, with bond between gateway and node
+
+git co step2:
+git diff step step2 --> add some networking to allow internet access, and access local mahine to vm
+
+git co step3:
+git diff step2 step2 -> show replace dockerB with vm, mount alpine iso, explain I add extra interface this is the "bmc"
+clab deploy, view console & do the copy-paste bond setup and ping works, 
+
+git co step4
+git diff step2 step3 -> I add extra docker image sushy that share networking, show susy calls works
+-point out that the image is in my controler (so some ai I can replay the behavior of)
+- that moment I have everytying I need to do full ACP/ZTP with ony setup
+
+
+git co step5
+same container lab
+do build an sno iso with assisted,
+share it to http
+do the mount
+watch in console
+watch in terminal

@@ -37,16 +37,22 @@ def main():
     subprocess.run(['virsh', 'list', '--all'], check=True, capture_output=True)
     logger.info("libvirtd ready")
 
-    disk_path = '/var/lib/libvirt/images/vm1.qcow2'
-    disk_size = os.environ.get('QEMU_DISK_SIZE', '50G')
-    logger.info(f"Creating disk {disk_path} size={disk_size}")
-    subprocess.run(['qemu-img', 'create', '-f', 'qcow2', disk_path, disk_size], check=True)
+    vda_path = '/var/lib/libvirt/images/vda.qcow2'
+    vda_size = os.environ.get('VDA_SIZE', '120G')
+    logger.info(f"Creating vda {vda_path} size={vda_size}")
+    subprocess.run(['qemu-img', 'create', '-f', 'qcow2', vda_path, vda_size], check=True)
+
+    vdb_path = '/var/lib/libvirt/images/vdb.qcow2'
+    vdb_size = os.environ.get('VDB_SIZE', '')
+    if vdb_size:
+        logger.info(f"Creating vdb {vdb_path} size={vdb_size}")
+        subprocess.run(['qemu-img', 'create', '-f', 'qcow2', vdb_path, vdb_size], check=True)
 
     machine = os.environ.get('QEMU_MACHINE', 'q35')
-    memory = os.environ.get('QEMU_MEMORY', '8192')
+    memory = os.environ.get('QEMU_MEMORY', '16384')
     os_variant = os.environ.get('QEMU_OS_VARIANT', 'rhel9.1')
     uuid = os.environ.get('VM_UUID')
-    vcpus = os.environ.get('VCPU', '4')
+    vcpus = os.environ.get('VCPU', '16')
 
     cmd = [
         'virt-install',
@@ -55,13 +61,17 @@ def main():
         '--machine', machine,
         '--memory', memory,
         '--vcpus', vcpus,
-        '--disk', f'path={disk_path},format=qcow2',
+        '--disk', f'path={vda_path},format=qcow2',
         '--os-variant', os_variant,
-        '--boot', 'firmware=efi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no',
+        '--boot', 'hd,cdrom,firmware=efi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no',
         '--graphics', 'vnc,port=5900,listen=0.0.0.0',
         '--noautoconsole',
         '--import',
     ]
+
+    if vdb_size:
+        cmd += ['--disk', f'path={vdb_path},format=qcow2']
+        logger.info(f"Attaching vdb {vdb_path}")
 
     if uuid:
         cmd += ['--uuid', uuid]
@@ -72,8 +82,9 @@ def main():
         isos = [f for f in os.listdir('/cdrom') if f.endswith('.iso')]
         if isos:
             has_iso = True
-            cmd += ['--cdrom', os.path.join('/cdrom', isos[0])]
-            cmd.remove('--import')
+            iso_path = os.path.join('/cdrom', isos[0])
+            cmd += ['--disk', f'path={iso_path},device=cdrom,readonly=on']
+            logger.info(f"Mounting ISO: {iso_path}")
 
     eth_ifaces = sorted(
         (os.path.basename(p) for p in glob.glob('/sys/class/net/eth*')),
@@ -100,6 +111,9 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
         cmd += ['--network', f'model=virtio,type=ethernet{mac_arg},xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
         logger.info(f"Added network for {iface} mac={mac} via {script_path}")
 
+    # virtio-net reports unknown speed/duplex — bond 802.3ad won't send LACP without valid MII status
+    cmd += ['--qemu-commandline', '-global virtio-net-pci.speed=1000 -global virtio-net-pci.duplex=full']
+
     logger.info("Running virt-install...")
     subprocess.run(cmd, check=True)
     logger.info("VM created")
@@ -109,12 +123,9 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
     bmc_ip = '<bmc>'
     try:
         data = json.loads(subprocess.run(
-            ['ip', '--json', 'a', 's', 'dev', 'bmc'], capture_output=True, text=True
+            ['ip', '--json', 'route', 'get', '8.8.8.8'], capture_output=True, text=True
         ).stdout)
-        for addr in data[0].get('addr_info', []):
-            if addr['family'] == 'inet':
-                bmc_ip = addr['local']
-                break
+        bmc_ip = data[0]['prefsrc']
     except Exception:
         pass
     domain_uuid = uuid or subprocess.run(
