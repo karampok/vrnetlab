@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import glob
-import hashlib
 import json
 import os
 import sys
@@ -9,13 +8,6 @@ import subprocess
 import time
 import logging
 import signal
-
-
-def mac_from_uuid(uuid_str, index):
-    h = hashlib.md5(f"{uuid_str}-{index}".encode()).digest()
-    mac = bytearray(h[:6])
-    mac[0] = (mac[0] | 0x02) & 0xfe  # locally administered, unicast
-    return ':'.join(f'{b:02x}' for b in mac)
 
 
 def setup_logging():
@@ -87,11 +79,11 @@ def main():
             logger.info(f"Mounting ISO: {iso_path}")
 
     eth_ifaces = sorted(
-        (os.path.basename(p) for p in glob.glob('/sys/class/net/eth*')),
+        (os.path.basename(p) for p in glob.glob('/sys/class/net/eth1*')),
         key=lambda x: int(x[3:])
     )
     logger.info(f"Detected eth interfaces: {eth_ifaces}")
-    for idx, iface in enumerate(eth_ifaces):
+    for iface in eth_ifaces:
         script_path = f'/etc/tc-tap-{iface}-ifup'
         with open(script_path, 'w') as f:
             f.write(f"""#!/bin/bash
@@ -106,9 +98,9 @@ tc qdisc add dev $TAP clsact
 tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
 """)
         os.chmod(script_path, 0o755)
-        mac = mac_from_uuid(uuid, idx) if uuid else None
-        mac_arg = f',mac={mac}' if mac else ''
-        cmd += ['--network', f'model=virtio,type=ethernet{mac_arg},xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
+        with open(f'/sys/class/net/{iface}/address') as f:
+            mac = f.read().strip()
+        cmd += ['--network', f'model=virtio,type=ethernet,mac={mac},xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
         logger.info(f"Added network for {iface} mac={mac} via {script_path}")
 
     # virtio-net reports unknown speed/duplex — bond 802.3ad won't send LACP without valid MII status
