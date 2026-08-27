@@ -6,17 +6,29 @@ topology:
       image: quay.io/karampok/vr-bmh:latest
       binds:
         - /dev/kvm:/dev/kvm
+        - ../alpine.iso:/cdrom/alpine.iso:ro
+      volumes:
+        - vrnet-bmh1-libvirt:/var/run/libvirt
       env:
         QEMU_DISK_SIZE: "50G"
         QEMU_MEMORY: "4256"
         VCPU: "2"
+        BMC_IP: 172.20.20.3
+        VM_NAME: bmo-e2e-0
         VM_UUID: 11111111-1111-1111-1111-111111111111
       cap-add:
         - NET_ADMIN
         - SYS_ADMIN
 
+    bmc1:
+      kind: linux
+      image: quay.io/karampok/sushy-emulator:nic-firmware
+      mgmt-ipv4: 172.20.20.3
+      volumes:
+        - vrnet-bmh1-libvirt:/var/run/libvirt
+
   links:
     # eth10 is the container veth onto which the guest VM NIC is redirected.
     - type: mgmt-net
       endpoint: {node: bmh1, interface: eth10, mac: "aa:aa:aa:aa:aa:01"}
-      host-interface: eth10-bmh1
+      host-interface: vrnet-eth10-bmh1

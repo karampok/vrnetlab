@@ -44,12 +44,13 @@ def main():
     memory = os.environ.get('QEMU_MEMORY', '16384')
     os_variant = os.environ.get('QEMU_OS_VARIANT', 'rhel9.1')
     uuid = os.environ.get('VM_UUID')
+    vm_name = os.environ.get('VM_NAME', 'vm1')
     vcpus = os.environ.get('VCPU', '16')
 
     cmd = [
         'virt-install',
         '--connect', 'qemu:///system',
-        '--name', 'vm1',
+        '--name', vm_name,
         '--machine', machine,
         '--memory', memory,
         '--vcpus', vcpus,
@@ -83,6 +84,7 @@ def main():
         key=lambda x: int(x[3:])
     )
     logger.info(f"Detected eth interfaces: {eth_ifaces}")
+    boot_mac = None
     for iface in eth_ifaces:
         script_path = f'/etc/tc-tap-{iface}-ifup'
         with open(script_path, 'w') as f:
@@ -100,6 +102,8 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
         os.chmod(script_path, 0o755)
         with open(f'/sys/class/net/{iface}/address') as f:
             mac = f.read().strip()
+        if boot_mac is None:
+            boot_mac = mac
         cmd += ['--network', f'model=virtio,type=ethernet,mac={mac},xpath0.create=./script,xpath1.set=./script/@path,xpath1.value={script_path}']
         logger.info(f"Added network for {iface} mac={mac} via {script_path}")
 
@@ -110,26 +114,30 @@ tc filter add dev $TAP ingress flower action mirred egress redirect dev {iface}
     subprocess.run(cmd, check=True)
     logger.info("VM created")
     if not has_iso:
-        subprocess.run(['virsh', 'destroy', 'vm1'], check=False)
+        subprocess.run(['virsh', 'destroy', vm_name], check=False)
         logger.info("No ISO mounted, VM powered off — waiting for BMC to provision")
-    bmc_ip = '<bmc>'
-    try:
-        data = json.loads(subprocess.run(
-            ['ip', '--json', 'route', 'get', '8.8.8.8'], capture_output=True, text=True
-        ).stdout)
-        bmc_ip = data[0]['prefsrc']
-    except Exception:
-        pass
+    bmc_ip = os.environ.get('BMC_IP')
+    if not bmc_ip:
+        bmc_ip = '<bmc>'
+        try:
+            data = json.loads(subprocess.run(
+                ['ip', '--json', 'route', 'get', '8.8.8.8'], capture_output=True, text=True
+            ).stdout)
+            bmc_ip = data[0]['prefsrc']
+        except Exception:
+            pass
     domain_uuid = uuid or subprocess.run(
-        ['virsh', 'domuuid', 'vm1'], capture_output=True, text=True
+        ['virsh', 'domuuid', vm_name], capture_output=True, text=True
     ).stdout.strip()
     logger.info(f"remote-viewer vnc://{bmc_ip}:5900")
+    logger.info(f"curl -L http://{bmc_ip}:8000/redfish/v1/Systems/{vm_name}")
     logger.info(f"curl http://{bmc_ip}:8000/redfish/v1/Systems/{domain_uuid}")
     logger.info(
         f"bmcs-clab.yaml:\n"
         f"- user: \"admin\"\n"
         f"  password: \"dummy\"\n"
-        f"  address: \"redfish-virtualmedia+http://{bmc_ip}:8000/redfish/v1/Systems/{domain_uuid}\""
+        f"  address: \"redfish-virtualmedia+http://{bmc_ip}:8000/redfish/v1/Systems/{vm_name}\"\n"
+        f"  bootMacAddress: \"{boot_mac or '<boot-mac>'}\""
     )
 
     def signal_handler(signum, frame):
